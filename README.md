@@ -14,7 +14,7 @@ This group of scripts can be used to:
 	The transcode scripts have been tested to work on ubuntu-12.04 LTS, ubuntu-14.01 LTS, MacOsX 10.7x (lion), and MacOsX 10.8. (mountain lion).
 
 
-An example run of using scripts review scripts for variables that require modifications for your media environment:
+An example run of using scripts.   Rember to review scripts for variables that require modifications for your media environment:
 
 run as mythtv userid on the system running primary mythTV backend with mythTV mysql database:
 
