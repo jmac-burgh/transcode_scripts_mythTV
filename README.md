@@ -10,8 +10,35 @@ This group of scripts can be used to:
 	to allow remote xbmc control requests.
 
 	
-	transcode the default infefficent mythTV mpeg2 recordings into mpeg4/h264 video files in an mkv container.
+	using the great GPL opensource app HandBrakeCLI, transcode the default infefficent mythTV mpeg2 recordings into mpeg4/h264 video files in an mkv container.
 	The transcode scripts have been tested to work on ubuntu-12.04 LTS, ubuntu-14.01 LTS, MacOsX 10.7x (lion), and MacOsX 10.8. (mountain lion).
+
+
+An example run of using scripts review scripts for variables that require modifications for your media environment:
+
+run as mythtv userid on the system running primary mythTV backend with mythTV mysql database:
+
+	cd /mythTV/recordings/links/test/log
+
+	~/scripts/makeMythLinks
+
+	ls -lat
+
+
+run as user with sudo mount privs on any system you want to use to crunch the HandBrakeCLI transcoding numbers:
+
+	cd ~/bin/scripts
+
+	./transcode-any
+
+			Note the above commands assume the HandBrakeCLI binary is either in the default path of the user running
+			the script, or has been added to ~/bin/.  If you have HandBrakeCLI in a different area modify the scripts
+			PATH deinition appropriately.
+
+
+
+The script can be run concurrently using multiple systems to do the transcoding...its been tested succesfully with five, but should work with
+as many as you need.	
 
 
 
