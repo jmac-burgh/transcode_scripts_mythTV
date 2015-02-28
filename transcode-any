@@ -1,0 +1,115 @@
+#!/bin/bash
+
+export PATH="$PATH":~/bin
+
+#
+#  check to see if the script is already running on this system and if it is exit out
+#
+
+if ps -ef | grep -v grep | grep transcodeIt ; then
+	echo;echo This system is already transcoding...do you want to BURN UP THE CPU \!\!\!;echo;echo
+        exit 0
+else
+
+#
+# setup the environment to match what you need
+#
+
+    sourcePath=~/nfs1/tvShows
+#   destinationPath=~/nfs2/tvShows
+    destinationPath=~/nfs2
+    logPath=~/transcodingLog
+    scriptPath=~/scripts
+    sourceExportPath='/mythTV/recordings/links/test'
+    destinationExportPath='/media_NAS/television'
+    logExportPath='/media_NAS/mythTV/transcodingLog'
+    scriptExportPath='/media_NAS/mythTV/scripts/distributedTranscoder'
+    myth_serverAddress='192.168.0.81'
+    NAS_serverAddress='192.168.0.45'
+
+
+#
+#  check to see if local mount points exists and if not create them
+#
+
+    if [ ! -d ~/nfs1 ]; then
+	echo;echo Creating local mount points in home directory of the user running the script;echo;echo
+	echo mkdir ~/nfs1;echo;echo
+        mkdir ~/nfs1
+    fi
+
+    if [ ! -d ~/nfs2 ]; then
+	echo;echo Creating local mount points in home directory of the user running the script;echo;echo
+        echo mkdir ~/nfs2;echo;echo	
+        mkdir ~/nfs2
+    fi
+
+    if [ ! -d ~/scripts ]; then
+	echo;echo Creating local mount points in home directory of the user running the script;echo;echo
+        echo mkdir ~/scripts;echo;echo
+        mkdir ~/scripts
+    fi
+
+    if [ ! -d ~/transcodingLog ]; then
+	echo;echo Creating local mount points in home directory of the user running the script;echo;echo
+        echo mkdir ~/transcodingLog;echo;echo
+        mkdir ~/transcodingLog
+    fi
+
+#
+# check for always non standard mac's and define mount command that will work on  macOsX 10.7  and above.  Tested on 10.7 (lion) and 10.8 (mountain lion)
+#
+#		02/22/2015	jmm
+
+
+    uname -a |grep -i darwin > ./temp.uname
+    if [ $? -eq 0 ]; then
+	Mount_Command='mount -t nfs -o resvport '
+    else
+	Mount_Command='mount -t nfs '
+    fi
+    rm ./temp.uname
+
+#
+# mount all required remote file systems
+#
+
+    echo;echo $Mount_Command $myth_serverAddress':'$sourceExportPath ~/nfs1;echo
+    sudo $Mount_Command $myth_serverAddress':'$sourceExportPath ~/nfs1
+
+    echo $Mount_Command $NAS_serverAddress':'$destinationExportPath ~/nfs2;echo
+    sudo $Mount_Command $NAS_serverAddress':'$destinationExportPath ~/nfs2
+
+    echo $Mount_Command $NAS_serverAddress':'$scriptExportPath ~/scripts;echo
+    sudo $Mount_Command $NAS_serverAddress':'$scriptExportPath ~/scripts
+
+    echo $Mount_Command $NAS_serverAddress':'$logExportPath ~/transcodingLog;echo
+    sudo $Mount_Command $NAS_serverAddress':'$logExportPath ~/transcodingLog
+
+#
+#  lets do the work and start transcoding some videos
+#
+
+    echo;echo Now it\'s time do burn CPU with some HEAVY transcoding.  MONITOR those TEMPS \!\!\!;echo;echo;echo
+
+    ~/scripts/transcodeIt $sourcePath $destinationPath $logPath $scriptPath
+
+#
+# cleaning up by unmounting remote file systems
+#
+
+   echo sudo umount ~/nfs1;echo
+   sudo umount ~/nfs1
+
+   echo sudo umount ~/nfs2;echo 
+   sudo umount ~/nfs2
+
+   echo sudo umount ~/scripts;echo
+   sudo umount ~/scripts
+
+   echo sudo umount ~/transcodingLog;echo;echo
+   sudo umount ~/transcodingLog
+
+   exit 0
+
+fi
