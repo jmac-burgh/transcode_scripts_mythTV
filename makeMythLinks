@@ -1,0 +1,474 @@
+#!/bin/bash
+
+#==============================================================================
+# This script creates hardlinks to mythtv recordings using metadata from the  
+# mythtv database. The hardlinks are named in a human readable format         
+# including a pattern that XBMC can use to identify  the recordings.          
+# If hardlink(s) have been created, a command is issued that tells            
+# xbmc to update its video library. curl must be installed for this to work.  
+# xbmc must be configured to allow it to be controled remotely.In its current 
+# form this script must be run on the machine that is running mysql server.   
+# Tested with mpg files but I guess it could work with other formats. Not     
+# sure about nupple files though.                                             
+#                                                                             
+# The following variables must be set in order to run the script              
+#                                                                             
+#       tvDirName:folder where the script will create links for the tvshows   
+#    movieDirName:folder where links for the movies wil be created            
+#     linkDirName:parent folder of movieDirName and tvDirName                 
+# lockFileDirName:directory to keep lock file                                 
+#  logFileDirName:directory to keep log file                                  
+#       staleTime:seconds after which lock file is considered stale
+#    cleanLibTime:minutes to sleep after issuing the clean library command
+#     scanLibTime:minutes to wait after issuing the  scan library command           
+#    xbmcUserName:xbmc username                                               
+#    xbmcPassword:xbmc password                                               
+#   xbmcIpAddress:ip address of the machine that is running xbmc              
+#    xbmcPort the:port that xbmc is listening on
+#
+# The mysql username and password are automatically extracted from the 
+# config file. 
+#   mySQLUserName:mysql database user name (automatically detected)           
+#   mySQLPassword:mysql database password  (automatically detected)                              
+#                                                                             
+# recordingsLocation is automatically retrieved from the myth database.       
+# the mythtv user should have write access in this location                   
+# title is created upon detection of a new tv series.                         
+# The paths are created as follows                                            
+#                                                                             
+# Hardlink location for tv shows will be created as follows                   
+# recordingsLocation/linkDirName/tvDirName/title/tvDBFileName                 
+#                                                                             
+# Hardlink location for movies will be created as follows                     
+# recordingsLocation/linkDirName/movieDirName/movieFileName                   
+#                                                                             
+# To run the script as "mythtv" for testing login as user mythtv.             
+# Under ubuntu 12.04 issue the command "sudo su mythtv -" and provide your    
+# root password. Navigate to where the script is and type                     
+# "bash makeMythLinks"                                                        
+#                                                                             
+# written with gedit and tested with bash version 4.2.25, ubuntu 12.04 server,
+# mythtv .26,.27,HD Homerun prime cableacard tuner.                           
+# Author Pedro Pena                                                           
+#==============================================================================
+
+#==============================================================================
+# Global values go here                                                       
+#==============================================================================
+
+tvDirName="tvShows" # the folder where the script will create links for the tvshows
+movieDirName="movies" # the folder where links for the movies wil be created
+linkDirName="links/test" # the parent folder of movieDirName and tvDirName
+lockFileDirName="lock" # directory to keep lock file
+logFileDirName="log" # directory to keep log file
+staleTime="1800" # seconds after which lock file is considered stale
+
+# attempt to automatically get username and password
+# if the path and/or filename is wrong on your system then update it below.
+# You can also replace the expressions the username and password
+# eg.
+# mySQLUserName="macleod"
+# mySQLPassword="h1land3r"
+mySQLUserName=`grep -oP '(?<=<UserName>).*?(?=</UserName>)' /etc/mythtv/config.xml`
+mySQLPassword=`grep -oP '(?<=<Password>).*?(?=</Password>)' /etc/mythtv/config.xml`
+
+# recordingsLocation holds the mythtv default path                            
+recordingsLocation=`mysql -u $mySQLUserName --password="$mySQLPassword" -s -N --raw -e\
+ 'SELECT DIRNAME FROM mythconverg.storagegroup WHERE GROUPNAME="Default"';`
+
+cleanLibTime="6" # number of minutes to sleep after issuing the clean library command
+scanLibTime="2" # number of minutes to wait after issuing the  scan library command
+
+NLCR=$(echo -e "\n\r")  # store newline and carriage return characters
+TAB=$(echo -e "\t")     # store tab character
+
+#==============================================================================
+# to allow remote control of xbmc navigate to                                 
+# system->settings->services->webserver                                       
+# enable "Allow control of XBMC via HTTP" and create a username and password  
+# system->settings->services->Remote control                                  
+# enable "Allow programs on other systems to control XBMC"                    
+#==============================================================================
+
+xbmcUserName="xbmc" # xbmc username
+xbmcPassword="xbmc" # xbmc password
+xbmcIpAddress="192.168.0.14" # ip address of the machine that is running xbmc
+xbmcPort="80" # the port that xbmc is listening on
+
+
+#==============================================================================
+# Global values end here                                                       
+#==============================================================================
+
+
+
+#==============================================================================
+# log appends to specified file prefixing the message with a timestamp.       
+# Takes two parameters. $1 which is the absolute path to the file and $2      
+# which is the message.                                                       
+#==============================================================================
+
+function log {
+    dirPath=$1
+    message=$2
+    echo `date +%Y%m%d%H%M%S`' '$message >> $dirPath
+} 
+
+
+#==============================================================================
+# getColumnValue extracts the column value from a string splitting the input  
+# via tab as a delimiter. parameter $1 is the row and parameter %2 is the     
+# requested field                                                             
+#==============================================================================
+
+
+function getColumnValue {
+    # column 0 season
+    # column 1 episode
+    # column 2 filename
+    # column 3 title
+    # column 4 programid
+    # column 5 originalairdate
+    # column 6 recgroup
+    # column 7 autoexpire
+    # column 8 endtime
+    # column 9 subtitle
+
+    # the column position values are determined by the order
+    # in which they're placed in the sql query
+
+    IFS=$TAB         # set default delimiter to \t
+    arr=($1)         #split tab delimited row into fields and place in an array
+    IFS=$NLCR        # set default delimeter to \n\r
+    echo ${arr[$2]} # return requested field
+
+}
+
+
+#==============================================================================
+# getType returns the first 2 characters from the programid field.            
+# These characters seem to be related to the type of recording it is. As far  
+# as I can tell MV is for movie and EP & SH for tv show and SP is sports. 
+# takes one parameter $1 which   
+# is the field that holds the "identifying" prefix                            
+#==============================================================================
+
+function getType {
+
+    line=$1
+    echo ${line:0:2} # return first two characters
+
+}
+
+
+#==============================================================================
+# createLinks checks if the links exist and creates them if they don't. It    
+# takes two paramteres $1 is the target file and path $2 is the path and      
+# filename for the hard link. CreateLinks returns true if a hard link is      
+# created. returns false if otherwise.                                        
+#==============================================================================
+function createLinks {
+
+    target=$1
+    hLink=$2
+    created="false"
+
+    if [ -f $target ] && [ ! -f $hLink ]; then
+        `ln $target $hLink`
+        created="true"
+    fi
+
+
+    echo $created
+}
+
+
+function getNumOfLinks {
+
+    if [ -f %1 ]; then
+        echo `stat -c %h $1`
+    else
+        echo "-1"
+    fi
+}
+
+#==============================================================================
+# createDir creates a directory if it doesn't exist. Takes one parameter. $1  
+# is the path of the directory to create                                      
+#==============================================================================
+function createDir {
+
+    dirPath=$1
+
+    if [ ! -d $dirPath ]; then
+        `mkdir $dirPath`
+    fi
+}
+
+
+
+
+
+#==============================================================================
+# Here the paths for the hardlinks are created if they don't exist            
+#==============================================================================
+
+# create the parent directory for the hard links, lock and logs subdirs
+#
+$(createDir $recordingsLocation''$linkDirName)
+#
+
+# create lockfile directory
+$(createDir $recordingsLocation''$linkDirName'/'$lockFileDirName)
+# create log directory
+$(createDir $recordingsLocation''$linkDirName'/'$logFileDirName)
+
+# create hard links
+$(createDir $recordingsLocation''$linkDirName'/'$tvDirName)
+$(createDir $recordingsLocation''$linkDirName'/'$movieDirName)
+
+#==============================================================================
+# Check to see if the script is currently running or if there is a stale lock 
+# file. If the file exists then the script is already running or the script   
+# ended without completing.The lock file is created with the epoch time in it 
+# this time is later compared to the current epcoh time. if it is greater     
+# than $staleTime then it assumed that the script ended in a bad way and a new
+# lock file is created and the script runs. If the file is there and the time 
+# has not elapsed then it exits                                                   
+#==============================================================================
+
+lockFile=$recordingsLocation''$linkDirName'/'$lockFileDirName'/lockFile'
+logFile=$recordingsLocation''$linkDirName'/'$logFileDirName'/log'
+deleteQueue=$recordingsLocation''$linkDirName'/'$logFileDirName'/deletequeue'
+
+fileToDelete=$1
+
+if [ "$fileToDelete" != "" ]; then
+    echo $fileToDelete >> $deleteQueue
+    $(log $logFile $fileToDelete" was added to delete queue.")
+fi
+
+if [ -f $lockFile ]; then
+    read -r temp < $lockFile
+    currentTime=$(echo `date +%s`)
+    timeElapsed=$((currentTime-temp))
+
+    if [ "$timeElapsed" -ge "$staleTime" ]; then
+        echo `date +%s` > $lockFile
+        $(log $logFile "lock file is stale,creating new one.")
+    else
+        $(log $logFile "script already running,exiting.")
+        exit 0
+    fi
+else
+
+    echo `date +%s` > $lockFile
+    $(log $logFile "creating lock file.")
+
+fi
+
+
+
+
+#==============================================================================
+# records holds the season numbers, episode numbers,filenames,titles,         
+# programids,air dates and episode names for all of the mythtv                
+# recordings(I hope). It seems like scheduled recordings always have a        
+# recordid > 0 and deleted recordings like livetv have a recordid = 0.        
+# note: SUBTITLE must always be the last column in the query below.           
+# The reason being that it doesn't always contain a value so it will shift    
+# the following columns down by one in the result string.                     
+#==============================================================================
+
+records=`mysql -u $mySQLUserName --password="$mySQLPassword" -s -N --raw -e\
+ 'SELECT SEASON,EPISODE,BASENAME,TITLE,PROGRAMID,\
+ORIGINALAIRDATE,RECGROUP,AUTOEXPIRE,ENDTIME,SUBTITLE FROM mythconverg.recorded WHERE RECORDID > 0';`
+
+
+
+
+#==============================================================================
+# This is the main loop. Each record is delimited by \n\r so the default      
+# delimiter is changed to \n\r                                                
+#==============================================================================
+
+IFS=$NLCR               # set default delimiter to newline carriage return
+linkDeleted="false"     # used to check if any links were removed
+hardLinkCreated="false" # used to check if any hard links were created
+temp=""                 # used for temporary stuff
+linksRemoved=0          # keep track of number of links removed   
+linksCreated=0          # keep track of number of links created
+
+for x in $records; do
+         season=$(getColumnValue $x 0)
+        episode=$(getColumnValue $x 1)
+       fileName=$(getColumnValue $x 2)
+          title=$(getColumnValue $x 3)
+         oTitle=$title     #need this to search other table
+      programid=$(getColumnValue $x 4)
+originalairdate=$(getColumnValue $x 5)
+       recGroup=$(getColumnValue $x 6)
+     autoExpire=$(getColumnValue $x 7)
+        endTime=$(getColumnValue $x 8)
+       subtitle=$(getColumnValue $x 9)
+      typeOfRec=$(getType $programid)
+  
+       # clean up title and subtitle
+       title=${title//[^a-zA-Z0-9 ]/} # remove non alphanumeric chars except space
+       title=${title// /_} # replace space with underscore
+       title=${title//__/_} # replace double underscore with single underscore
+       title=${title,,} # make lowercase
+
+       subtitle=${subtitle//[^a-zA-Z0-9 ]/} # remove non alphanumeric chars except space
+       subtitle=${subtitle// /_} # replace space with underscore
+       subtitle=${subtitle//__/_} # replace double underscore with single underscore
+       subtitle=${subtitle,,} # make lowercase
+       fileExtension=${fileName##*.} # extracts the extension for the video file
+       fileNameSansExt=${fileName%.*} #extracts filename  without extension
+       target=$recordingsLocation$fileName # location & filename of the actual myth recording
+ 
+       # converting the show endtime to epoch time for easier comparisons
+       endTime=`date +%s -ud $endTime`
+       currentTime=`date +%s`
+       # if timeDiff is greater than 0 then the show is still recording
+       timeDiff=$((endTime-currentTime)) 
+
+        if [ "$subtitle" == "" ]; then #need some sort of subtitle or same name links will occur.
+            #subtitle=$originalairdate  
+            subtitle=$fileNameSansExt # 9.7.14 this does not allow same name links to be created
+        fi
+
+    if ( [ "$typeOfRec" == "EP" ] || [ "$typeOfRec" == "SH" ] || [ "$typeOfRec" == "SP" ] ) && [ "0" -ge "$timeDiff" ]; then # check if it's a tv show/sports
+
+        #create tv show directory if it doesn't exist
+        $(createDir $recordingsLocation''$linkDirName'/'$tvDirName'/'$title)
+
+        pattern='s'$season'e'$episode
+
+         # if season and episode numbers aren't present use the original air date
+        if [ "$season" == "0" ] && [ "$episode" == "0" ]; then
+            pattern=$originalairdate
+
+        else
+            # delete file with original airdate if seasons are now available.
+
+            tvDBFileName=$subtitle'.'$originalairdate'.'$fileExtension
+            hLink=$recordingsLocation''$linkDirName'/'$tvDirName'/'$title'/'$tvDBFileName
+
+            if [ -f $hLink ]; then
+
+                `rm $hLink`
+                linkDeleted="true"
+                linksRemoved=$((linksRemoved+1))
+                $(log $logFile $hLink" has been removed because season and episode numbers are now available.")
+
+            fi
+
+        fi
+
+        tvDBFileName=$subtitle'.'$pattern'.'$fileExtension
+        hLink=$recordingsLocation''$linkDirName'/'$tvDirName'/'$title'/'$tvDBFileName
+        linkNum=$(getNumOfLinks $hLink)
+
+        # attemptig to detect a deletion via mythtv.... should probably remove this.
+        if [ "$recGroup" == "Deleted" ] && [ "$autoExpire" -gt "0" ] && [ -f $hLink ]; then
+
+            $(log $logFile "delete requested,removing links for "$title"-"$tvDBFileName)
+            `rm $hLink`
+             linkDeleted="true"
+             linksRemoved=$((linksRemoved+1))
+
+        else
+
+            if [ "$recGroup" != "Deleted" ] && [ "0" -ge "$timeDiff" ] && [ "$autoExpire" != "9999" ]; then
+
+                temp=$(createLinks $target $hLink)
+            fi
+
+            if [ "$temp" == "true" ]; then
+                $(log $logFile $hLink" has been created.")
+                hardLinkCreated="true"
+                linksCreated=$((linksCreated+1))
+                temp="false"
+
+            fi
+
+        fi
+
+
+
+    else
+
+        # this is where the links are created for movies
+        releaseDate=`mysql -u $mySQLUserName --password="$mySQLPassword" -s -N --raw -e\
+ 'SELECT AIRDATE FROM mythconverg.recordedprogram WHERE TITLE="'$oTitle'" LIMIT 1;'`
+        pattern='('$releaseDate')'
+        movieFileName=$title''$pattern'.'$fileExtension
+        hLink=$recordingsLocation''$linkDirName'/'$movieDirName'/'$movieFileName
+        linkNum=$(getNumOfLinks $hLink)
+
+        if [ "$recGroup" == "Deleted" ] && [ "$autoExpire" -gt "0" ] && [ -f $hLink ]; then
+
+            $(log $logFile "delete requested,removing links for "$movieFileName)
+            `rm $hLink`
+             linkDeleted="true"
+             linksRemoved=$((linksRemoved+1))
+
+        else
+
+            if [ "$recGroup" != "Deleted" ] && [ ! "$pattern" == "" ] && [ ! "$pattern" == "(0000)" ] && [ "$autoExpire" != "9999" ]; then
+
+                temp=$(createLinks $target $hLink)
+
+            fi
+
+            if [ "$temp" == "true" ]; then
+                $(log $logFile $sLink" has been created.")
+                hardLinkCreated="true"
+                linksCreated=$((linksCreated+1))
+                temp="false"
+
+            fi
+
+        fi
+
+    fi
+
+
+done # end for loop
+
+
+#
+# lines that can be used to automate xbmc video library refresh to automatically add/delete items in video library using json
+# add any xbmc clients with a video library in the variable definition section above then uncomment lines below
+#
+
+# clean the xbmc video library if any links were removed
+#if [ "$linkDeleted" == "true" ]; then
+#    curl --data-binary '{ "jsonrpc": "2.0", "method": "VideoLibrary.Clean", "id": "mybash"}' -H 'content-type: application/json;' $xbmcUserName:$xbmcPassword@$xbmcIpAddress:$xbmcPort/jsonrpc
+#    $(log $logFile "library clean request issued to xbmc")
+#    $(log $logFile "sleeping for 3 minutes while library is cleaned")
+#    sleep 3m
+#fi
+
+
+# update xbmc video library if any hard links were added.
+#if [ "$hardLinkCreated" == "true" ]; then
+#if [ "$hardLinkCreated" == "$hardLinkCreated" ]; then
+#    curl --data-binary '{ "jsonrpc": "2.0", "method": "VideoLibrary.Scan", "id": "mybash"}' -H 'content-type: application/json;' $xbmcUserName:$xbmcPassword@$xbmcIpAddress:$xbmcPort/jsonrpc
+#    $(log $logFile "library scan request issued to xbmc")
+#    $(log $logFile "sleeping for 1 minute while library scans")
+#    sleep 1m
+#fi
+
+
+
+
+
+
+$(log $logFile $linksCreated" links created "$linksRemoved" links removed")
+
+# remove lock file
+$(log $logFile "removing lock file")
+`rm $lockFile`
+
