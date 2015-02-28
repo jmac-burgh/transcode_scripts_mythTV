@@ -15,7 +15,7 @@ This group of scripts can be used to:
 
 
 
-Many thanks to the developer of these scripts Pedro Pena, all the hard work was done by him.  My contribution was slightly modify the code to work efficiently in my media server/client
+Many thanks to the developer of these scripts Pedro Pena, all the hard work was done by him.  My contribution was to slightly modify the code to work efficiently in my media server/client
 environment.
 
 				jmac
