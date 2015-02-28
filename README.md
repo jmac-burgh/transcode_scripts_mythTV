@@ -33,7 +33,7 @@ run as user with sudo mount privs on any system you want to use to crunch the Ha
 
 			Note the above commands assume the HandBrakeCLI binary is either in the default path of the user running
 			the script, or has been added to ~/bin/.  If you have HandBrakeCLI in a different area modify the scripts
-			PATH deinition appropriately.
+			export PATH statement appropriately.
 
 
 
