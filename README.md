@@ -18,7 +18,7 @@ An example run of using scripts.   Rember to review scripts for variables that r
 
 run as mythtv userid on the system running primary mythTV backend with mythTV mysql database:
 
-	cd /mythTV/recordings/links/test/log
+	cd /mythTV/recordings/links/test
 
 	~/scripts/makeMythLinks
 
