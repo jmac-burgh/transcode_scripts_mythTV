@@ -25,7 +25,7 @@ run as mythtv userid on the system running primary mythTV backend with mythTV my
 	ls -lat
 
 
-run as user with sudo mount privs on any system you want to use to crunch the HandBrakeCLI transcoding numbers, note assumes any system script is run on is already allowed to mount
+rus as user with sudo mount privs on any system you want to use to crunch the HandBrakeCLI transcoding numbers.  Assumption is any system script is run on is already allowed to mount
 the source and destination file systems used in the transcode commands:
 
 	cd ~/bin/scripts
