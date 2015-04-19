@@ -91,9 +91,9 @@ TAB=$(echo -e "\t")     # store tab character
 #==============================================================================
 
 xbmcUserName="xbmc" # xbmc username
-xbmcPassword="xbmc" # xbmc password
+xbmcPassword="apollo13" # xbmc password
 xbmcIpAddress="192.168.0.14" # ip address of the machine that is running xbmc
-xbmcPort="80" # the port that xbmc is listening on
+xbmcPort="8080" # the port that xbmc is listening on
 
 
 #==============================================================================
