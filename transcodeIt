@@ -8,6 +8,7 @@ sourcePath=$1
 destinationPath=$2
 logPath=$3
 scriptPath=$4
+subtitlesPath=$5
 
 computerName=`uname -n`
 
@@ -20,6 +21,7 @@ computerName=`uname -n`
 function log {
     dirPath=$1
     message=$2
+    subtitle=$3
     echo `date +%Y%m%d%H%M%S`'-'$computerName'-'$message >> $dirPath
 }
 
@@ -27,8 +29,24 @@ function transcodeVideo {
 # --start-at duration:240 --stop-at duration:120
     sourceVideo=$1
     destinationVideo=$2
-HandBrakeCLI -i $sourceVideo -o $destinationVideo -e x264  -q 22.0 -r 30 --pfr  -a 1 -E faac -B 128 -6 dpl2 -R Auto -D 0.0  -a 1,2,3,4,5,6 -E copy:ac3 --audio-fallback ffac3 -f mkv -X 1920 -Y 1080 --loose-anamorphic --modulus 2 --x264-preset medium --h264-profile main --h264-level 3.1 & wait $!
-echo `basename $sourceVideo`' transcoded to '$destinationVideo
+    subtitle=$3
+#
+#  check to see if subtitles file is available to include in transcode
+#  if it is include in handbrake command if not don't
+#
+
+if [ -f "$subtitle" ]; then
+	HandBrakeCLI -i $sourceVideo -o $destinationVideo --decomb -e x264  -q 20.0 --srt-file "$subtitle" --vfr  -a 1 -E faac -B 128 -6 dpl2 -R Auto -D 0.0  -a 1,2,3,4,5,6 -E copy:ac3 --audio-fallback ffac3 -f mkv -X 1920 -Y 1080 --loose-anamorphic --modulus 2 --x264-preset medium --h264-profile main --h264-level 3.1 & wait $!
+
+
+else
+	HandBrakeCLI -i $sourceVideo -o $destinationVideo --decomb -e x264  -q 20.0 --vfr  -a 1 -E faac -B 128 -6 dpl2 -R Auto -D 0.0  -a 1,2,3,4,5,6 -E copy:ac3 --audio-fallback ffac3 -f mkv -X 1920 -Y 1080 --loose-anamorphic --modulus 2 --x264-preset medium --h264-profile main --h264-level 3.1 & wait $!
+
+fi
+
+
+  
+echo `basename $sourceVideo`' transcoded to '$destinationVideo 
 }
 
 
@@ -39,11 +57,14 @@ echo `basename $sourceVideo`' transcoded to '$destinationVideo
 find $sourcePath -type d > temp.txt   #copy dir structure to temp file
 # commented out original because it was choking on sed command.  Probably
 # the leading / in path.  Just used the non massaged version of the 
-#  source
+#  source.  Addded lines for incorporating subtitles variables to pass to transcsode function
+#
 
 #sp="${sourcePath//\//'\/'}"           #massage to make sed friendly
 
 sp=$sourcePath
+subp=$subtitlesPath			# path where subtitles located
+subtitle_lang=es			#define subtitle language `
 dp="${destinationPath//\//'\/'}"      #massage to make sed friendly
 #dp1="s/${sp}/$dp/g"                   #create sed replacement string
 dp1="s#${sp}#$dp#g"			# create sed replacement string, note had to use different sed seperator
@@ -70,16 +91,34 @@ find $sourcePath -type f -name "*.mpg"| grep -Ev "$xcludeString" | while read f;
     filePath=`dirname $f`  # get path
     fileExtension=${fileName##*.} # extracts the extension for the video file
     fileNameSansExt=${fileName//\.$fileExtension/''} # removes extension from filename
+
     fileNameTocreate=$fileNameSansExt'.mkv' # this will be the name of the transcoded file
-    dp2="${filePath//$sourcePath/$destinationPath}"'/' # create destination from source
+    subtitlefile=$subp$fileNameSansExt.$subtitle_lang'.srt' # this is the subtitle file if avaiable
+
+
+
+#
+#   check to see if we are transcoding a TvShow (inputs 5 args to script) or movie (inputs 6 args to script)
+#
+    if [ "$#" -eq 5 ]; then
+    	dp2="${filePath//$sourcePath/$destinationPath}"'/' # create destination from source
+    else
+	mkdir "${filePath//$sourcePath/$destinationPath}"'/'$fileNameSansExt'/'
+	dp2="${filePath//$sourcePath/$destinationPath}"'/'$fileNameSansExt'/'
+    fi
+	
     fileToCreate=$dp2''$fileNameTocreate # this is the file to check for and create
     tempFile=$fileToCreate".part"
-echo $tempFile
     if [ ! -f $fileToCreate ] && [ ! -f $tempFile ]; then
         touch $tempFile
         $(log $logPath'/'log.txt "creating temp file    "$tempFile)
         $(log $logPath'/'log.txt "starting to transcode "$fileToCreate)
-       lkj=$(transcodeVideo $f $fileToCreate)
+
+	lkj=$(transcodeVideo $f $fileToCreate $subtitlefile)
+
+
+
+
         $(log $logPath'/'log.txt "finished transcoding  "$fileToCreate)
         rm $tempFile
         $(log $logPath'/'log.txt "removing temp         "$tempFile)
@@ -87,7 +126,6 @@ echo $tempFile
         echo $tempFile' already exists,skipping.....'
     fi
 
-    #echo $fileToCreate
 
 
 done  

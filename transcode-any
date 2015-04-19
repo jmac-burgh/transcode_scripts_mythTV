@@ -20,10 +20,12 @@ else
     destinationPath=~/nfs2
     logPath=~/transcodingLog
     scriptPath=~/scripts
+    subtitlesPath=~/subtitles/
     sourceExportPath='/mythTV/recordings/links/test'
     destinationExportPath='/media_NAS/television'
     logExportPath='/media_NAS/mythTV/transcodingLog'
     scriptExportPath='/media_NAS/mythTV/scripts/distributedTranscoder'
+    subtitlesExportPath='/media_NAS/ext_subs'
     myth_serverAddress='192.168.0.81'
     NAS_serverAddress='192.168.0.45'
 
@@ -56,6 +58,13 @@ else
         mkdir ~/transcodingLog
     fi
 
+    if [ ! -d ~/subtitles ]; then
+        echo;echo Creating local mount points in home directory of the user running the script;echo;echo
+        echo mkdir ~/subtitles;echo;echo
+        mkdir ~/subtitles
+    fi
+
+
 #
 # check for always non standard mac's and define mount command that will work on  macOsX 10.7  and above.  Tested on 10.7 (lion) and 10.8 (mountain lion)
 #
@@ -86,13 +95,18 @@ else
     echo $Mount_Command $NAS_serverAddress':'$logExportPath ~/transcodingLog;echo
     sudo $Mount_Command $NAS_serverAddress':'$logExportPath ~/transcodingLog
 
+    echo $Mount_Command $NAS_serverAddress':'$subtitlesExportPath ~/subtitles;echo
+    sudo $Mount_Command $NAS_serverAddress':'$subtitlesExportPath ~/subtitles
+
+
+
 #
 #  lets do the work and start transcoding some videos
 #
 
     echo;echo Now it\'s time do burn CPU with some HEAVY transcoding.  MONITOR those TEMPS \!\!\!;echo;echo;echo
 
-    ~/scripts/transcodeIt $sourcePath $destinationPath $logPath $scriptPath
+    ~/scripts/transcodeIt $sourcePath $destinationPath $logPath $scriptPath $subtitlesPath
 
 #
 # cleaning up by unmounting remote file systems
@@ -109,6 +123,10 @@ else
 
    echo sudo umount ~/transcodingLog;echo;echo
    sudo umount ~/transcodingLog
+
+   echo sudo umount ~/subtitles;echo;echo
+   sudo umount ~/subtitles
+
 
    exit 0
 
