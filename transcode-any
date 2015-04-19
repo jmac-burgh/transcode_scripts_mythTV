@@ -16,7 +16,6 @@ else
 #
 
     sourcePath=~/nfs1/tvShows
-#   destinationPath=~/nfs2/tvShows
     destinationPath=~/nfs2
     logPath=~/transcodingLog
     scriptPath=~/scripts
